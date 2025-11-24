@@ -35,7 +35,7 @@
       margin-top: 16px;
       padding: 8px;
       border: 1px solid #ccc;
-      max-height: 260px;
+      max-height: 220px;
       overflow-y: auto;
       font-family: monospace;
       font-size: 12px;
@@ -50,23 +50,19 @@
       align-items: center;
       gap: 4px;
     }
-    .small {
-      font-size: 11px;
-      color: #666;
-    }
   </style>
 </head>
 <body>
   <h1>Idle Relay Control (IOX-OUTPUT)</h1>
   <p>
     Select a vehicle with IOX-OUTPUT installed. You can pulse the relay manually, or enable
-    automatic idle shutdown. <strong>Note:</strong> auto mode only runs while this page is open in MyGeotab.
+    automatic idle shutdown. <strong>Note:</strong> auto mode only runs while this page is open.
   </p>
 
   <div class="row">
     <label for="deviceSelect">Vehicle / GO device</label>
     <select id="deviceSelect">
-      <option value="">Loading devices from MyGeotab…</option>
+      <option value="">Loading devices…</option>
     </select>
   </div>
 
@@ -76,31 +72,16 @@
     <input id="outputIndex" type="number" value="1" min="1" style="width:60px" />
     <span>Pulse (seconds):</span>
     <input id="pulseSeconds" type="number" value="15" min="1" style="width:60px" />
-    <div class="small">
-      Set <strong>Output index</strong> to the channel wired to the relay (e.g. 1 or 2).  
-      <strong>Pulse</strong> is how long to kill power (e.g. 15 seconds).
-    </div>
   </div>
 
   <div class="row">
     <button id="pulseBtn">Pulse relay now</button>
   </div>
 
-  <div class="row">
-    <label for="idleRuleName">Idle rule name (exact)</label>
-    <input id="idleRuleName" type="text" style="min-width: 260px;"
-           placeholder="Exact Exception Rule name in MyGeotab" />
-    <button id="reloadRuleBtn">Reload idle rule</button>
-    <div class="small">
-      This must match the <strong>Exception Rule name</strong> you created for idle &gt; 2m50s
-      (or whatever duration you used).
-    </div>
-  </div>
-
   <div class="row inline">
     <input id="autoEnable" type="checkbox" />
     <label for="autoEnable" style="margin: 0; font-weight: 500;">
-      Enable auto idle shutdown (when idle rule is active)
+      Enable auto idle shutdown (Idle &gt; 2m50s rule)
     </label>
   </div>
 
@@ -108,26 +89,21 @@
 
   <script>
     (function () {
-      // ====== CONFIG ======
-      // IMPORTANT: set this to the method name that worked for your manual pulse.
-      // e.g. "SetIO" or whatever you confirmed in the SDK.
-      const IO_METHOD_NAME = "SetDeviceIO"; // <-- CHANGE THIS to the working method name you used.
+      // ---- CONFIG ----
+      const IO_METHOD = "SetDeviceIO"; // <<<< CHANGE THIS TO THE METHOD NAME THAT WORKED FOR MANUAL PULSE
+      const IDLE_RULE_NAME = "Idle > 2m50s (Auto Shutdown)";
+      const AUTO_POLL_SECONDS = 60;     // how often to check idle
+      const COOLDOWN_MINUTES = 15;      // min time between auto pulses per device
 
-      const AUTO_POLL_SECONDS = 60;   // how often to check for idle exceptions
-      const COOLDOWN_MINUTES = 15;    // min time between auto pulses per device
-
-      // ====== ADD-IN NAMESPACE ======
       geotab.addin.idleRelayControl = function (api, state) {
 
-        let deviceSelect, pulseBtn, logEl, outputIndexInput, pulseSecondsInput;
-        let autoEnableInput, idleRuleNameInput, reloadRuleBtn;
-
+        let deviceSelect, pulseBtn, logEl, outputIndexInput, pulseSecondsInput, autoEnableInput;
         let idleRuleId = null;
         let autoTimerId = null;
         const lastPulseByDevice = {}; // deviceId -> timestamp ms
 
         function log(message) {
-          const ts = new Date().toLocaleTimeString();
+          const ts = new Date().toISOString();
           logEl.textContent = "[" + ts + "] " + message + "\n" + logEl.textContent;
         }
 
@@ -136,7 +112,7 @@
           log("ERROR: " + (error && error.message ? error.message : JSON.stringify(error)));
         }
 
-        // ----- Devices -----
+        // Load devices into dropdown
         function loadDevices(callback) {
           log("Loading devices from MyGeotab…");
           api.call("Get", {
@@ -157,20 +133,13 @@
           }, handleError);
         }
 
-        // ----- Idle Rule -----
+        // Find the idle rule by name
         function loadIdleRule() {
-          const ruleName = (idleRuleNameInput.value || "").trim();
-          if (!ruleName) {
-            log("Idle rule name is empty. Enter the exact Exception Rule name and click Reload.");
-            idleRuleId = null;
-            return;
-          }
-
-          log("Searching for idle rule named: \"" + ruleName + "\"…");
+          log('Looking for idle rule named: "' + IDLE_RULE_NAME + '"');
           api.call("Get", {
             typeName: "ExceptionRule",
             search: {
-              name: ruleName
+              name: IDLE_RULE_NAME
             }
           }, function (rules) {
             if (rules && rules.length > 0) {
@@ -178,12 +147,16 @@
               log("Found idle rule. ID: " + idleRuleId);
             } else {
               idleRuleId = null;
-              log("Idle rule not found. Double-check the name matches exactly in MyGeotab.");
+              log(
+                'Idle rule not found. Create an Exception Rule named exactly "' +
+                IDLE_RULE_NAME +
+                '" with: Ignition ON, Speed < 1 mph, Duration > 2m50s (or your 2:50 logic).'
+              );
             }
           }, handleError);
         }
 
-        // ----- Relay Pulse -----
+        // Core: pulse the IOX-OUTPUT relay
         function pulseRelay(deviceId, outputIndex, pulseMs, reason) {
           if (!deviceId) {
             log("Select a device first.");
@@ -193,27 +166,27 @@
           const now = Date.now();
           const last = lastPulseByDevice[deviceId] || 0;
           const minGapMs = COOLDOWN_MINUTES * 60 * 1000;
-          if (reason === "auto" && (now - last < minGapMs)) {
-            log("Skipping auto pulse due to cooldown (last pulse was " +
-                Math.round((now - last) / 1000) + "s ago).");
+          if (reason === "auto" && now - last < minGapMs) {
+            log("Skipping auto pulse (cooldown active).");
             return;
           }
 
-          log("Pulsing relay on device " + deviceId +
-              " (output " + outputIndex + ", " + pulseMs + " ms). Reason: " + (reason || "manual"));
+          log(
+            "Pulsing relay on device " + deviceId +
+            " (output " + outputIndex + ", " + pulseMs + " ms). Reason: " + (reason || "manual")
+          );
 
           lastPulseByDevice[deviceId] = now;
 
           const offPayload = {
             device: { id: deviceId },
             outputs: [
-              { index: outputIndex, on: false }
+              { index: outputIndex, on: false } // your IO_METHOD handles mapping this to relay kill/allow
             ]
           };
 
-          // Use the configured method name (you already know which one works from your manual test)
-          api.call(IO_METHOD_NAME, offPayload, function () {
-            log("Relay set OFF via " + IO_METHOD_NAME + ".");
+          api.call(IO_METHOD, offPayload, function () {
+            log("Relay set OFF.");
 
             setTimeout(function () {
               const onPayload = {
@@ -223,7 +196,7 @@
                 ]
               };
 
-              api.call(IO_METHOD_NAME, onPayload, function () {
+              api.call(IO_METHOD, onPayload, function () {
                 log("Relay set back ON (pulse complete).");
               }, handleError);
 
@@ -232,7 +205,7 @@
           }, handleError);
         }
 
-        // ----- Auto Mode -----
+        // Check if selected device is currently violating the idle rule
         function checkIdleAndMaybePulse() {
           const deviceId = deviceSelect.value;
           if (!deviceId) {
@@ -240,67 +213,53 @@
             return;
           }
           if (!idleRuleId) {
-            log("Auto check: idle rule ID not loaded; reloading rule…");
-            loadIdleRule();
+            log("Auto check: idle rule ID not loaded; skipping.");
+            return;
+          }
+          if (!autoEnableInput.checked) {
+            log("Auto check: auto mode disabled; skipping.");
             return;
           }
 
-          const now = new Date();
-          const from = new Date(now.getTime() - 5 * 60 * 1000); // last 5 minutes
+          log("Auto check: querying ExceptionEvent for device " + deviceId);
 
-          log("Auto check: checking for active idle exceptions on device " + deviceId + "…");
+          const now = new Date();
+          const from = new Date(now.getTime() - 10 * 60 * 1000); // last 10 minutes
 
           api.call("Get", {
             typeName: "ExceptionEvent",
             search: {
+              deviceSearch: { id: deviceId },
               ruleSearch: { id: idleRuleId },
               fromDate: from.toISOString(),
-              toDate: now.toISOString(),
-              deviceSearch: { id: deviceId }
+              toDate: now.toISOString()
             }
           }, function (events) {
-            if (!events || events.length === 0) {
-              log("Auto check: no recent idle exceptions.");
-              return;
-            }
-
-            const active = events.filter(function (e) {
-              // activeTo === null typically means still active
-              return !e.activeTo;
+            const active = events && events.some(function (ev) {
+              // Active if activeTo is null or in the future
+              return !ev.activeTo || new Date(ev.activeTo) > now;
             });
 
-            if (active.length === 0) {
-              log("Auto check: no currently active idle exceptions.");
-              return;
+            if (active) {
+              log("Auto check: device is currently violating idle rule; triggering auto pulse.");
+              const outputIndex = parseInt(outputIndexInput.value || "1", 10);
+              const pulseSeconds = parseInt(pulseSecondsInput.value || "15", 10);
+              const pulseMs = pulseSeconds * 1000;
+              pulseRelay(deviceId, outputIndex, pulseMs, "auto");
+            } else {
+              log("Auto check: no active idle violation for selected device.");
             }
-
-            log("Auto check: found " + active.length +
-                " active idle exception(s). Pulsing relay (auto) if cooldown allows.");
-            const outputIndex = parseInt(outputIndexInput.value || "1", 10) || 1;
-            const pulseSeconds = parseInt(pulseSecondsInput.value || "15", 10) || 15;
-            const pulseMs = pulseSeconds * 1000;
-
-            pulseRelay(deviceId, outputIndex, pulseMs, "auto");
           }, handleError);
         }
 
-        function startAutoChecks() {
-          if (autoTimerId) {
-            return;
-          }
-          autoTimerId = setInterval(checkIdleAndMaybePulse, AUTO_POLL_SECONDS * 1000);
-          log("Auto idle shutdown ENABLED (checking every " + AUTO_POLL_SECONDS + "s).");
-        }
-
-        function stopAutoChecks() {
+        function startAutoTimer() {
           if (autoTimerId) {
             clearInterval(autoTimerId);
-            autoTimerId = null;
-            log("Auto idle shutdown DISABLED.");
           }
+          autoTimerId = setInterval(checkIdleAndMaybePulse, AUTO_POLL_SECONDS * 1000);
+          log("Auto idle monitor started (every " + AUTO_POLL_SECONDS + " seconds).");
         }
 
-        // ----- Add-in lifecycle -----
         return {
           initialize: function (apiArg, stateArg, callback) {
             deviceSelect = document.getElementById("deviceSelect");
@@ -309,8 +268,6 @@
             outputIndexInput = document.getElementById("outputIndex");
             pulseSecondsInput = document.getElementById("pulseSeconds");
             autoEnableInput = document.getElementById("autoEnable");
-            idleRuleNameInput = document.getElementById("idleRuleName");
-            reloadRuleBtn = document.getElementById("reloadRuleBtn");
 
             log("Add-in script loaded inside MyGeotab.");
 
@@ -327,28 +284,26 @@
 
             autoEnableInput.addEventListener("change", function () {
               if (autoEnableInput.checked) {
-                startAutoChecks();
+                log("Auto idle shutdown ENABLED.");
+                startAutoTimer();
               } else {
-                stopAutoChecks();
+                log("Auto idle shutdown DISABLED.");
               }
             });
 
-            reloadRuleBtn.addEventListener("click", function () {
-              loadIdleRule();
-            });
-
-            // Initial loads
             loadDevices(function () {
-              log("Add-in initialized.");
+              loadIdleRule();
+              startAutoTimer();
+              log("Add-in loaded successfully.");
               callback();
             });
           },
 
-          focus: function (apiArg, stateArg) {
+          focus: function () {
             log("Idle Relay Control focused.");
           },
 
-          blur: function (apiArg, stateArg) {
+          blur: function () {
             log("Idle Relay Control blurred.");
           }
         };
