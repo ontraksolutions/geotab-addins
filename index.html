@@ -55,14 +55,14 @@
 <body>
   <h1>Idle Relay Control (IOX-OUTPUT)</h1>
   <p>
-    Select the bus with IOX-OUTPUT installed. You can use the manual pulse button to test the relay,
-    or enable auto idle shutdown. <strong>Note:</strong> Auto mode only runs while this page is open in MyGeotab.
+    Select a vehicle with IOX-OUTPUT installed. You can pulse the relay manually, or enable
+    automatic idle shutdown. <strong>Note:</strong> auto mode only runs while this page is open.
   </p>
 
   <div class="row">
     <label for="deviceSelect">Vehicle / GO device</label>
     <select id="deviceSelect">
-      <option value="">Loading devices...</option>
+      <option value="">Loading devices…</option>
     </select>
   </div>
 
@@ -95,20 +95,6 @@
       const AUTO_POLL_SECONDS = 60;              // How often to check for idle exceptions
       const COOLDOWN_MINUTES = 15;               // Minimum time between pulses for same device
 
-      // This ONLY works when loaded as a MyGeotab add-in (where geotab.addin exists)
-      if (!window.geotab || !geotab.addin) {
-        document.addEventListener("DOMContentLoaded", function () {
-          const logEl = document.getElementById("log");
-          if (logEl) {
-            const ts = new Date().toISOString();
-            logEl.textContent =
-              "[" + ts + "] NOTE: This page is open directly (not inside MyGeotab). " +
-              "UI will load but device list and relay commands will NOT work here.\n";
-          }
-        });
-        return;
-      }
-
       geotab.addin.idleRelayControl = function (api, state) {
 
         let deviceSelect, pulseBtn, logEl, outputIndexInput, pulseSecondsInput, autoEnableInput;
@@ -126,9 +112,8 @@
           log("ERROR: " + (error && error.message ? error.message : JSON.stringify(error)));
         }
 
-        // Load devices for the dropdown
         function loadDevices(callback) {
-          log("Loading devices from MyGeotab...");
+          log("Loading devices from MyGeotab…");
           api.call("Get", {
             typeName: "Device",
             search: {
@@ -147,7 +132,6 @@
           }, handleError);
         }
 
-        // Look up the idle rule by name
         function loadIdleRule() {
           log('Looking for idle rule named: "' + IDLE_RULE_NAME + '"');
           api.call("Get", {
@@ -232,7 +216,6 @@
             });
         }
 
-        // Check for active idle exception and pulse if needed
         function checkIdleAndMaybePulse() {
           const deviceId = deviceSelect.value;
           if (!deviceId) {
@@ -268,10 +251,7 @@
             if (active) {
               log("Device is currently idling beyond threshold. Considering auto pulse.");
               const outputIndex = parseInt(outputIndexInput.value || "1", 10);
-              const pulseSeconds = parseInt(
-                pulseSecondsInput.value || String(DEFAULT_PULSE_SECONDS),
-                10
-              );
+              const pulseSeconds = parseInt(pulseSecondsInput.value || String(DEFAULT_PULSE_SECONDS), 10);
               const pulseMs = pulseSeconds * 1000;
               pulseRelay(deviceId, outputIndex, pulseMs, "auto");
             } else {
@@ -311,14 +291,9 @@
             pulseBtn.addEventListener("click", function () {
               const deviceId = deviceSelect.value;
               let outputIndex = parseInt(outputIndexInput.value || "1", 10);
-              let pulseSeconds = parseInt(
-                pulseSecondsInput.value || String(DEFAULT_PULSE_SECONDS),
-                10
-              );
+              let pulseSeconds = parseInt(pulseSecondsInput.value || String(DEFAULT_PULSE_SECONDS), 10);
               if (isNaN(outputIndex) || outputIndex < 1) outputIndex = 1;
-              if (isNaN(pulseSeconds) || pulseSeconds < 1) {
-                pulseSeconds = DEFAULT_PULSE_SECONDS;
-              }
+              if (isNaN(pulseSeconds) || pulseSeconds < 1) pulseSeconds = DEFAULT_PULSE_SECONDS;
               const pulseMs = pulseSeconds * 1000;
 
               pulseRelay(deviceId, outputIndex, pulseMs, "manual");
@@ -338,11 +313,11 @@
             });
           },
 
-          focus: function () {
+          focus: function (apiArg, stateArg) {
             log("Idle Relay Control focused.");
           },
 
-          blur: function () {
+          blur: function (apiArg, stateArg) {
             log("Idle Relay Control blurred.");
           }
         };
@@ -351,4 +326,3 @@
   </script>
 </body>
 </html>
-
