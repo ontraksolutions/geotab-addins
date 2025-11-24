@@ -92,7 +92,7 @@
       // ---- CONFIG ----
       const DEFAULT_PULSE_SECONDS = 15;          // 15s pulse
       const IDLE_RULE_NAME = "Idle > 2m50s (Auto Shutdown)";
-      const AUTO_POLL_SECONDS = 60;              // How often to check for idle exceptions
+      const AUTO_POLL_SECONDS = 15;              // How often to check for idle exceptions
       const COOLDOWN_MINUTES = 15;               // Minimum time between pulses for same device
 
       geotab.addin.idleRelayControl = function (api, state) {
