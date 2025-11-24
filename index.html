@@ -7,10 +7,11 @@
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       margin: 16px;
+      font-size: 14px;
     }
     h1 {
       font-size: 20px;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
     p {
       font-size: 13px;
@@ -18,43 +19,37 @@
       margin: 4px 0 10px;
     }
     label {
-      display: block;
-      margin: 8px 0 4px;
+      display: inline-block;
+      margin: 8px 4px 4px;
       font-weight: 600;
       font-size: 13px;
     }
-    select, button, input {
-      padding: 6px 8px;
-      font-size: 14px;
+    select, input, button {
+      padding: 4px 8px;
+      font-size: 13px;
       margin-right: 8px;
     }
     button {
       cursor: pointer;
     }
+    .row {
+      margin-top: 10px;
+    }
     #log {
       margin-top: 16px;
       padding: 8px;
       border: 1px solid #ccc;
-      max-height: 260px;
+      max-height: 220px;
       overflow-y: auto;
       font-family: monospace;
       font-size: 12px;
       background: #fafafa;
       white-space: pre-wrap;
     }
-    .row {
-      margin-bottom: 10px;
-    }
-    .inline {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
   </style>
 </head>
 <body>
   <h1>Idle Relay Control (IOX-OUTPUT)</h1>
-
   <p>
     Select the bus with IOX-OUTPUT installed. You can use the manual pulse button to test the relay,
     or enable auto idle shutdown. <strong>Auto mode only runs while this page is open in MyGeotab.</strong>
@@ -68,38 +63,195 @@
   </div>
 
   <div class="row">
-    <label>Relay settings</label>
-    <span>Output index:</span>
-    <input id="outputIndex" type="number" value="1" min="1" style="width:60px" />
-    <span>Pulse (seconds):</span>
-    <input id="pulseSeconds" type="number" value="15" min="1" style="width:60px" />
+    <label for="relayIndex">Relay settings Output index:</label>
+    <input id="relayIndex" type="number" min="1" max="4" value="1" />
+    <label for="pulseSeconds">Pulse (seconds):</label>
+    <input id="pulseSeconds" type="number" min="1" max="60" value="15" />
+    <button id="pulseButton">Pulse relay now</button>
   </div>
 
   <div class="row">
-    <button id="pulseBtn">Pulse relay now</button>
-  </div>
-
-  <div class="row inline">
-    <input id="autoEnable" type="checkbox" />
-    <label for="autoEnable" style="margin: 0; font-weight: 500;">
-      Enable auto idle shutdown
+    <label>
+      <input id="autoIdleCheckbox" type="checkbox" />
+      Enable auto idle shutdown (2m 50s idle, speed &lt; 1 mph, ignition on, Park)
     </label>
   </div>
 
-  <div id="log"></div>
+  <div id="log">Add-in script loaded.\n</div>
 
   <script>
-    // Basic JS placeholder to prevent add-in errors (you will later replace with full relay code)
-    geotab.addin.idleRelayControl = function (api, state) {
-      return {
-        initialize: function (api, state, callback) {
-          document.getElementById("log").innerText = "Add-in loaded successfully.";
-          callback();
-        },
-        focus: function () {},
-        blur: function () {}
+    (function () {
+      var deviceSelect,
+          relayIndexInput,
+          pulseSecondsInput,
+          pulseButton,
+          autoIdleCheckbox,
+          autoTimer = null,
+          apiRef = null;
+
+      function log(msg) {
+        var el = document.getElementById("log");
+        if (!el) return;
+        var time = new Date().toLocaleTimeString();
+        el.textContent += "[" + time + "] " + msg + "\n";
+        el.scrollTop = el.scrollHeight;
+      }
+
+      function loadDevices(api) {
+        deviceSelect.innerHTML = '<option value="">Loading devices...</option>';
+        log("Requesting device list from MyGeotab...");
+
+        api.call("Get", {
+          typeName: "Device",
+          search: {}   // all devices current user can see
+        }, function (devices) {
+          deviceSelect.innerHTML = "";
+
+          if (!devices || !devices.length) {
+            deviceSelect.innerHTML = '<option value="">No devices found</option>';
+            log("API call succeeded but returned 0 devices.");
+            return;
+          }
+
+          devices.forEach(function (d) {
+            var opt = document.createElement("option");
+            opt.value = d.id;
+            opt.textContent = d.name || d.serialNumber || d.id;
+            deviceSelect.appendChild(opt);
+          });
+
+          log("Loaded " + devices.length + " devices.");
+        }, function (error) {
+          console.error("Device load error", error);
+          deviceSelect.innerHTML = '<option value="">Error loading devices</option>';
+          var msg = (error && (error.message || error.toString())) || "Unknown error";
+          log("Error loading devices: " + msg);
+        });
+      }
+
+      function sendRelayCommand(api, deviceId, channelIndex, isOn) {
+        if (!deviceId) {
+          log("Cannot send relay command: no device selected.");
+          return;
+        }
+
+        log("Sending IOX-OUTPUT " + (isOn ? "ON" : "OFF") +
+            " on channel " + channelIndex + " to device " + deviceId + "...");
+
+        api.call("Add", {
+          typeName: "TextMessage",
+          entity: {
+            device: { id: deviceId },
+            isDirectionToVehicle: true,
+            messageContent: {
+              contentType: "IoxOutput",
+              channel: String(channelIndex),
+              isRelayOn: isOn
+            }
+          }
+        }, function () {
+          log("Relay command sent successfully (" + (isOn ? "ON" : "OFF") + ").");
+        }, function (error) {
+          console.error("Relay error", error);
+          var msg = (error && (error.message || error.toString())) || "Unknown error";
+          log("Error sending relay command: " + msg);
+        });
+      }
+
+      function startAutoIdle(api) {
+        if (autoTimer) {
+          clearInterval(autoTimer);
+        }
+
+        var deviceId = deviceSelect.value;
+        if (!deviceId) {
+          log("Auto idle not started: no device selected.");
+          autoIdleCheckbox.checked = false;
+          return;
+        }
+
+        log("Auto idle enabled for device " + deviceId +
+            " (threshold 2m50s, speed < 1 mph, ignition on, gear = Park).");
+
+        // NOTE: This is just a skeleton. You still need a rule or
+        // StatusData logic hooked up here to decide WHEN to send the pulse.
+        // For now, we just log every 15 seconds so you can see it's running.
+        autoTimer = setInterval(function () {
+          log("Auto idle timer tick (this is where we would check idle state & pulse relay).");
+          // Later you can plug in ExceptionEvent / StatusData checks here.
+        }, 15000);
+      }
+
+      function stopAutoIdle() {
+        if (autoTimer) {
+          clearInterval(autoTimer);
+          autoTimer = null;
+          log("Auto idle disabled.");
+        }
+      }
+
+      function initialize(api, state, callback) {
+        apiRef = api;
+        deviceSelect      = document.getElementById("deviceSelect");
+        relayIndexInput   = document.getElementById("relayIndex");
+        pulseSecondsInput = document.getElementById("pulseSeconds");
+        pulseButton       = document.getElementById("pulseButton");
+        autoIdleCheckbox  = document.getElementById("autoIdleCheckbox");
+
+        log("initialize() called by MyGeotab.");
+
+        pulseButton.addEventListener("click", function () {
+          var deviceId = deviceSelect.value;
+          var channelIndex = parseInt(relayIndexInput.value || "1", 10) || 1;
+          var seconds = parseInt(pulseSecondsInput.value || "15", 10) || 15;
+
+          if (!deviceId) {
+            alert("Select a device first.");
+            return;
+          }
+
+          sendRelayCommand(apiRef, deviceId, channelIndex, true);
+          setTimeout(function () {
+            sendRelayCommand(apiRef, deviceId, channelIndex, false);
+          }, seconds * 1000);
+        });
+
+        autoIdleCheckbox.addEventListener("change", function () {
+          if (autoIdleCheckbox.checked) {
+            startAutoIdle(apiRef);
+          } else {
+            stopAutoIdle();
+          }
+        });
+
+        loadDevices(apiRef);
+        callback();
+      }
+
+      function focus(api, state) {
+        log("focus() called.");
+        // could refresh devices here if needed
+      }
+
+      function blur(api, state) {
+        log("blur() called. Cleaning up timers.");
+        stopAutoIdle();
+      }
+
+      // Register the add-in with the exact same name as in your JSON config: "idleRelayControl"
+      window.geotab = window.geotab || {};
+      window.geotab.addin = window.geotab.addin || {};
+      window.geotab.addin.idleRelayControl = {
+        initialize: initialize,
+        focus: focus,
+        blur: blur
       };
-    };
+
+      // If opened directly in a browser (not inside MyGeotab), there will be no API.
+      if (!window.frameElement) {
+        log("NOTE: This page is open directly (not inside MyGeotab). UI will load but device list and relay commands will NOT work here.");
+      }
+    })();
   </script>
 </body>
 </html>
