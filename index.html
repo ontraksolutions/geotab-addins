@@ -4,89 +4,317 @@
   <meta charset="utf-8" />
   <title>Idle Relay Control (IOX-OUTPUT)</title>
   <style>
+    :root {
+      --bg: #f3f4f6;
+      --card-bg: #ffffff;
+      --border: #e5e7eb;
+      --text-main: #111827;
+      --text-muted: #6b7280;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --danger: #b91c1c;
+      --danger-hover: #991b1b;
+      --success: #16a34a;
+      --success-bg: #dcfce7;
+      --danger-bg: #fee2e2;
+      --warning-bg: #fef3c7;
+      --radius-lg: 12px;
+    }
+
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      margin: 16px;
+      margin: 0;
+      padding: 24px;
+      background: radial-gradient(circle at top left, #e0f2fe 0, #f9fafb 35%, #e5e7eb 100%);
+      color: var(--text-main);
     }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
     h1 {
-      font-size: 20px;
-      margin-bottom: 8px;
+      font-size: 22px;
+      margin: 0 0 6px;
+      letter-spacing: 0.02em;
     }
-    p {
+
+    .subtitle {
       font-size: 13px;
-      color: #444;
-      margin: 4px 0 10px;
+      color: var(--text-muted);
+      margin-bottom: 18px;
     }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
+      padding: 18px 20px 20px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+
+    .row + .row {
+      border-top: 1px dashed var(--border);
+      padding-top: 14px;
+    }
+
     label {
       display: block;
-      margin: 8px 0 4px;
-      font-weight: 600;
-      font-size: 13px;
-    }
-    select, button, input {
-      padding: 6px 8px;
-      font-size: 14px;
-      margin-right: 8px;
-    }
-    button {
-      cursor: pointer;
-    }
-    #log {
-      margin-top: 16px;
-      padding: 8px;
-      border: 1px solid #ccc;
-      max-height: 260px;
-      overflow-y: auto;
-      font-family: monospace;
       font-size: 12px;
-      background: #fafafa;
-      white-space: pre-wrap;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 4px;
     }
-    .row {
-      margin-bottom: 10px;
+
+    select,
+    input[type="number"] {
+      padding: 7px 10px;
+      font-size: 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      min-width: 220px;
+      outline: none;
+      background: #f9fafb;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
     }
-    .inline {
+
+    select:focus,
+    input[type="number"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.3);
+      background: #ffffff;
+    }
+
+    .btn {
+      padding: 7px 14px;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
+      transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+      box-shadow: none;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.3);
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: #ffffff;
+      box-shadow: 0 8px 18px rgba(185, 28, 28, 0.3);
+    }
+
+    .btn-danger:hover {
+      background: var(--danger-hover);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover {
+      background: #f9fafb;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+    }
+
+    #log {
+      margin-top: 18px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      max-height: 260px;
+      overflow-y: auto;
+      font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 11px;
+      background: #020617;
+      color: #e5e7eb;
+      white-space: pre-wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .badge-muted {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .badge-danger {
+      background: var(--danger-bg);
+      color: #b91c1c;
+    }
+
+    .badge-success {
+      background: var(--success-bg);
+      color: #166534;
+    }
+
+    .badge-warning {
+      background: var(--warning-bg);
+      color: #92400e;
+    }
+
+    .status-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-right: 6px;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    @media (max-width: 640px) {
+      .row {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      select,
+      input[type="number"] {
+        width: 100%;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>Idle Relay Control (IOX-OUTPUT)</h1>
-  <p>
-    Select a vehicle with IOX-OUTPUT installed. When the idle rule triggers (2m50s),
-    this add-in will <strong>turn the relay ON and leave it latched</strong> (engine/accessories off)
-    until the driver presses the IOX-ALERT button, or an admin restores power below.
-    <strong>Note:</strong> auto mode only runs while this page is open.
-  </p>
+  <div class="container">
+    <h1>Idle Relay Control</h1>
+    <div class="subtitle">
+      IOX-OUTPUT + IOX-ALERT control. Idle rule kills the bus and leaves it latched off until
+      the driver presses the alert button or an admin restores power here.
+    </div>
 
-  <div class="row">
-    <label for="deviceSelect">Vehicle / GO device</label>
-    <select id="deviceSelect">
-      <option value="">Loading devices…</option>
-    </select>
+    <div class="card">
+      <!-- Vehicle + status -->
+      <div class="row">
+        <div>
+          <div class="section-title">Vehicle</div>
+          <label for="deviceSelect">Select GO device</label>
+          <select id="deviceSelect">
+            <option value="">Loading devices…</option>
+          </select>
+          <div class="hint">
+            Only devices with IOX-OUTPUT installed should be used here.
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">Status</div>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+            <span class="status-label">Last command:</span>
+            <span id="statusBadge" class="badge badge-muted">None yet</span>
+          </div>
+          <div class="hint" id="statusHint">
+            Status is based on the last command sent from this panel.
+          </div>
+        </div>
+      </div>
+
+      <!-- Relay settings + admin controls -->
+      <div class="row">
+        <div>
+          <div class="section-title">Relay settings</div>
+          <label for="outputIndex">Output index (channel)</label>
+          <input id="outputIndex" type="number" value="2" min="1" style="width:80px" />
+          <div class="hint">
+            This should match the IOX-OUTPUT channel wired to the engine kill relay.
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">Admin controls</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;">
+            <button id="killBtn" class="btn btn-danger">
+              &#x26D4; Shut engine off now
+            </button>
+            <button id="restoreBtn" class="btn btn-primary">
+              &#x2714; Restore bus power
+            </button>
+          </div>
+          <div class="hint">
+            These commands go directly to the relay. Use restore if a bus is stuck off.
+          </div>
+        </div>
+      </div>
+
+      <!-- Auto mode -->
+      <div class="row">
+        <div>
+          <div class="section-title">Automation</div>
+          <div class="checkbox-row">
+            <input id="autoEnable" type="checkbox" />
+            <label for="autoEnable" style="margin:0;">
+              Enable auto idle shutdown for the selected vehicle
+            </label>
+          </div>
+          <div class="hint">
+            When enabled, this tab will:
+            <br />• Watch the idle rule (<strong>2m50s</strong>) and send <strong>relay ON</strong> (kill)
+            <br />• Watch the IOX-ALERT rule and send <strong>relay OFF</strong> (restore)
+          </div>
+        </div>
+      </div>
+
+      <div id="log"></div>
+    </div>
   </div>
-
-  <div class="row">
-    <label>Relay settings</label>
-    <span>Output index (channel):</span>
-    <input id="outputIndex" type="number" value="2" min="1" style="width:60px" />
-  </div>
-
-  <div class="row">
-    <button id="killBtn">Shut engine off now (relay ON)</button>
-    <button id="restoreBtn">Restore bus power (relay OFF)</button>
-  </div>
-
-  <div class="row inline">
-    <input id="autoEnable" type="checkbox" />
-    <label for="autoEnable" style="margin: 0; font-weight: 500;">
-      Enable auto idle shutdown (Idle rule → latch OFF until IOX-ALERT button)
-    </label>
-  </div>
-
-  <div id="log"></div>
 
   <script>
     (function () {
@@ -107,7 +335,9 @@
             restoreBtn,
             logEl,
             outputIndexInput,
-            autoEnableInput;
+            autoEnableInput,
+            statusBadge,
+            statusHint;
 
         let autoTimerId = null;
         let lastIdleCheck = null;
@@ -121,6 +351,22 @@
         function handleError(error) {
           console.error(error);
           log("ERROR: " + (error && error.message ? error.message : JSON.stringify(error)));
+        }
+
+        // --- Status badge helpers ---
+        function setStatus(text, variant) {
+          statusBadge.textContent = text || "Unknown";
+          statusBadge.className = "badge " + (variant || "badge-muted");
+
+          if (variant === "badge-danger") {
+            statusHint.textContent = "Last command from this panel was to kill (relay ON).";
+          } else if (variant === "badge-success") {
+            statusHint.textContent = "Last command from this panel was to restore (relay OFF).";
+          } else if (variant === "badge-warning") {
+            statusHint.textContent = "Automation is active; status may change based on rules.";
+          } else {
+            statusHint.textContent = "Status is based on the last command sent from this panel.";
+          }
         }
 
         // Load devices into dropdown
@@ -144,7 +390,7 @@
           }, handleError);
         }
 
-        // Send a TextMessage with IoxOutput content (same pattern you already had)
+        // Send a TextMessage with IoxOutput content
         function sendIoxOutput(deviceId, channel, isRelayOn, reason) {
           if (!deviceId) {
             log("No device selected.");
@@ -187,6 +433,7 @@
           if (isNaN(outputIndex) || outputIndex < 1) outputIndex = 1;
 
           log("Killing vehicle " + deviceId + " via relay ON. Reason: " + (reason || "manual"));
+          setStatus("Kill sent", "badge-danger");
           return sendIoxOutput(deviceId, outputIndex, true, reason || "manual kill");
         }
 
@@ -196,6 +443,7 @@
           if (isNaN(outputIndex) || outputIndex < 1) outputIndex = 1;
 
           log("Restoring vehicle " + deviceId + " via relay OFF. Reason: " + (reason || "manual"));
+          setStatus("Restore sent", "badge-success");
           return sendIoxOutput(deviceId, outputIndex, false, reason || "manual restore");
         }
 
@@ -239,12 +487,12 @@
               ' exception events for idle rule "' + IDLE_RULE_NAME + '".'
             );
 
-            // For every new idle event in this window, send a kill command
             idleEvents.forEach(function (ev) {
               if (!ev.device || !ev.device.id) return;
               if (ev.device.id !== deviceId) return;
 
               log("Idle rule triggered for device " + deviceId + ". Sending relay ON (kill).");
+              setStatus("Auto kill (idle)", "badge-danger");
               killVehicle(deviceId, "auto idle rule");
             });
 
@@ -295,26 +543,24 @@
               ' exception events for alert rule "' + ALERT_RULE_NAME + '".'
             );
 
-            // For every new alert event in this window, send a restore command
             alertEvents.forEach(function (ev) {
               if (!ev.device || !ev.device.id) return;
               if (ev.device.id !== deviceId) return;
 
               log("Alert rule triggered (button press) for device " + deviceId + ". Sending relay OFF (restore).");
+              setStatus("Auto restore (button)", "badge-success");
               restoreVehicle(deviceId, "auto IOX-ALERT restore");
             });
 
             lastAlertCheck = nowIso;
           }, function (error) {
             handleError(error);
-            lastAlertCheck = nowIso; // move window forward anyway
+            lastAlertCheck = nowIso;
           });
         }
 
         function pollAutoLogic() {
-          // On each cycle, we:
-          //  - check idle rule to KILL if needed
-          //  - check alert rule to RESTORE if needed
+          setStatus("Automation running", "badge-warning");
           pollIdleForSelectedDevice();
           pollAlertForSelectedDevice();
         }
@@ -335,6 +581,7 @@
             "Auto idle shutdown enabled. Polling every " +
             AUTO_POLL_SECONDS + " seconds."
           );
+          setStatus("Automation running", "badge-warning");
         }
 
         function stopAutoMode() {
@@ -343,6 +590,7 @@
             autoTimerId = null;
             log("Auto idle shutdown disabled.");
           }
+          setStatus("None yet", "badge-muted");
         }
 
         return {
@@ -353,8 +601,11 @@
             logEl             = document.getElementById("log");
             outputIndexInput  = document.getElementById("outputIndex");
             autoEnableInput   = document.getElementById("autoEnable");
+            statusBadge       = document.getElementById("statusBadge");
+            statusHint        = document.getElementById("statusHint");
 
             log("Add-in initialized.");
+            setStatus("None yet", "badge-muted");
 
             killBtn.addEventListener("click", function () {
               const deviceId = deviceSelect.value;
