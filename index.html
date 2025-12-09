@@ -55,8 +55,10 @@
 <body>
   <h1>Idle Relay Control (IOX-OUTPUT)</h1>
   <p>
-    Select a vehicle with IOX-OUTPUT installed. You can pulse the relay manually, or enable
-    automatic idle shutdown. <strong>Note:</strong> auto mode only runs while this page is open.
+    Select a vehicle with IOX-OUTPUT installed. When the idle rule triggers (2m50s),
+    this add-in will <strong>turn the relay ON and leave it latched</strong> (engine/accessories off)
+    until the driver presses the IOX-ALERT button, or an admin restores power below.
+    <strong>Note:</strong> auto mode only runs while this page is open.
   </p>
 
   <div class="row">
@@ -70,18 +72,17 @@
     <label>Relay settings</label>
     <span>Output index (channel):</span>
     <input id="outputIndex" type="number" value="2" min="1" style="width:60px" />
-    <span>Pulse (seconds):</span>
-    <input id="pulseSeconds" type="number" value="15" min="1" style="width:60px" />
   </div>
 
   <div class="row">
-    <button id="pulseBtn">Pulse relay now</button>
+    <button id="killBtn">Shut engine off now (relay ON)</button>
+    <button id="restoreBtn">Restore bus power (relay OFF)</button>
   </div>
 
   <div class="row inline">
     <input id="autoEnable" type="checkbox" />
     <label for="autoEnable" style="margin: 0; font-weight: 500;">
-      Enable auto idle shutdown (2m50s+ idle → 15s pulse)
+      Enable auto idle shutdown (Idle rule → latch OFF until IOX-ALERT button)
     </label>
   </div>
 
@@ -90,16 +91,27 @@
   <script>
     (function () {
       // ---- CONFIG ----
-      const DEFAULT_PULSE_SECONDS = 15;          // 15s pulse
-      const IDLE_RULE_NAME = "Idle > 2m50s (Auto Shutdown)";
-      const AUTO_POLL_SECONDS = 15;             // Check every 15s
-      const COOLDOWN_MINUTES = 15;              // Minimum time between auto pulses per device
+      // Use the exact names of your Geotab rules:
+      //  - IDLE_RULE_NAME     = 2m50s idle shutdown rule
+      //  - ALERT_RULE_NAME    = rule based on "Alert button depressed" (IOX-ALERT)
+      const IDLE_RULE_NAME  = "Idle > 2m50s (Auto Shutdown)";
+      const ALERT_RULE_NAME = "Idle Kill – Alert Button Pressed";
+
+      // How often to poll for exceptions (in seconds)
+      const AUTO_POLL_SECONDS = 15;
 
       geotab.addin.idleRelayControl = function (api, state) {
 
-        let deviceSelect, pulseBtn, logEl, outputIndexInput, pulseSecondsInput, autoEnableInput;
+        let deviceSelect,
+            killBtn,
+            restoreBtn,
+            logEl,
+            outputIndexInput,
+            autoEnableInput;
+
         let autoTimerId = null;
-        const lastPulseByDevice = {}; // deviceId -> timestamp ms
+        let lastIdleCheck = null;
+        let lastAlertCheck = null;
 
         function log(message) {
           const ts = new Date().toISOString();
@@ -132,8 +144,13 @@
           }, handleError);
         }
 
-        // Send a TextMessage with IoxOutput content
+        // Send a TextMessage with IoxOutput content (same pattern you already had)
         function sendIoxOutput(deviceId, channel, isRelayOn, reason) {
+          if (!deviceId) {
+            log("No device selected.");
+            return Promise.reject(new Error("No device selected"));
+          }
+
           const msg = {
             device: { id: deviceId },
             messageContent: {
@@ -164,69 +181,57 @@
           });
         }
 
-        // Pulse relay: ON (kill in your wiring) then OFF after pulseMs
-        function pulseRelay(deviceId, outputIndex, pulseMs, reason) {
-          if (!deviceId) {
-            log("Select a device first.");
-            return;
-          }
+        // Manually kill (relay ON = engine/accessories OFF with your wiring)
+        function killVehicle(deviceId, reason) {
+          let outputIndex = parseInt(outputIndexInput.value || "1", 10);
+          if (isNaN(outputIndex) || outputIndex < 1) outputIndex = 1;
 
-          const now = Date.now();
-          const last = lastPulseByDevice[deviceId] || 0;
-          const minGapMs = COOLDOWN_MINUTES * 60 * 1000;
-          if (now - last < minGapMs && reason === "auto") {
-            log("Skipping auto pulse (cooldown active).");
-            return;
-          }
-
-          lastPulseByDevice[deviceId] = now;
-
-          log(
-            "Pulsing relay on device " + deviceId +
-            " (channel " + outputIndex + ", " + pulseMs + " ms). Reason: " +
-            (reason || "manual")
-          );
-
-          // 1) Turn relay ON (in your wiring: ON = kill)
-          sendIoxOutput(deviceId, outputIndex, true, reason)
-            .then(function () {
-              // 2) After pulseMs, turn relay OFF (normal)
-              setTimeout(function () {
-                sendIoxOutput(deviceId, outputIndex, false, reason + " (pulse end)");
-              }, pulseMs);
-            })
-            .catch(function (err) {
-              handleError(err);
-            });
+          log("Killing vehicle " + deviceId + " via relay ON. Reason: " + (reason || "manual"));
+          return sendIoxOutput(deviceId, outputIndex, true, reason || "manual kill");
         }
 
-        // Check if selected device is currently violating the idle rule (by name + active state)
-        function checkIdleAndMaybePulse() {
+        // Manually restore (relay OFF = normal operation)
+        function restoreVehicle(deviceId, reason) {
+          let outputIndex = parseInt(outputIndexInput.value || "1", 10);
+          if (isNaN(outputIndex) || outputIndex < 1) outputIndex = 1;
+
+          log("Restoring vehicle " + deviceId + " via relay OFF. Reason: " + (reason || "manual"));
+          return sendIoxOutput(deviceId, outputIndex, false, reason || "manual restore");
+        }
+
+        // Poll idle exceptions for the selected device and kill when new idle events appear
+        function pollIdleForSelectedDevice() {
           const deviceId = deviceSelect.value;
           if (!deviceId) {
-            log("Auto check: no device selected; skipping.");
+            log("Auto check (idle): no device selected; skipping.");
             return;
           }
 
           const now = new Date();
-          const from = new Date(now.getTime() - 10 * 60 * 1000); // last 10 minutes
+          const nowIso = now.toISOString();
+
+          if (!lastIdleCheck) {
+            // On first run, look back 5 minutes
+            const from = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+            lastIdleCheck = from;
+          }
+
           log(
             'Checking idle exceptions for "' + IDLE_RULE_NAME +
-            '" from ' + from.toISOString() + " to " + now.toISOString()
+            '" from ' + lastIdleCheck + " to " + nowIso
           );
 
           api.call("Get", {
             typeName: "ExceptionEvent",
             search: {
-              fromDate: from.toISOString(),
-              toDate: now.toISOString(),
+              fromDate: lastIdleCheck,
+              toDate: nowIso,
               deviceSearch: { id: deviceId }
             }
           }, function (events) {
-            // Filter to this idle rule by name
+            // Only care about events matching the idle rule name
             const idleEvents = events.filter(function (ev) {
-              return ev.rule &&
-                     ev.rule.name === IDLE_RULE_NAME;
+              return ev.rule && ev.rule.name === IDLE_RULE_NAME;
             });
 
             log(
@@ -234,34 +239,84 @@
               ' exception events for idle rule "' + IDLE_RULE_NAME + '".'
             );
 
-            // Consider active if state is Active OR activeTo not set
-            let active = false;
+            // For every new idle event in this window, send a kill command
             idleEvents.forEach(function (ev) {
-              const stateId = ev.state && ev.state.id ? ev.state.id : "";
-              const isActiveState = stateId === "ExceptionEventStateActiveId";
-              const hasNoEnd = !ev.activeTo;
-              if (isActiveState || hasNoEnd) {
-                active = true;
-              }
+              if (!ev.device || !ev.device.id) return;
+              if (ev.device.id !== deviceId) return;
+
+              log("Idle rule triggered for device " + deviceId + ". Sending relay ON (kill).");
+              killVehicle(deviceId, "auto idle rule");
             });
 
-            if (active) {
-              log("Device has an ACTIVE idle exception. Considering auto pulse.");
-              let outputIndex = parseInt(outputIndexInput.value || "1", 10);
-              let pulseSeconds = parseInt(
-                pulseSecondsInput.value || String(DEFAULT_PULSE_SECONDS),
-                10
-              );
-              if (isNaN(outputIndex) || outputIndex < 1) outputIndex = 1;
-              if (isNaN(pulseSeconds) || pulseSeconds < 1) {
-                pulseSeconds = DEFAULT_PULSE_SECONDS;
-              }
-              const pulseMs = pulseSeconds * 1000;
-              pulseRelay(deviceId, outputIndex, pulseMs, "auto");
-            } else {
-              log("No ACTIVE idle exception for selected device.");
+            lastIdleCheck = nowIso;
+          }, function (error) {
+            handleError(error);
+            lastIdleCheck = nowIso; // move window forward anyway
+          });
+        }
+
+        // Poll IOX-ALERT rule exceptions for the selected device and restore when new events appear
+        function pollAlertForSelectedDevice() {
+          const deviceId = deviceSelect.value;
+          if (!deviceId) {
+            log("Auto check (alert): no device selected; skipping.");
+            return;
+          }
+
+          const now = new Date();
+          const nowIso = now.toISOString();
+
+          if (!lastAlertCheck) {
+            // On first run, look back 5 minutes
+            const from = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+            lastAlertCheck = from;
+          }
+
+          log(
+            'Checking alert exceptions for "' + ALERT_RULE_NAME +
+            '" from ' + lastAlertCheck + " to " + nowIso
+          );
+
+          api.call("Get", {
+            typeName: "ExceptionEvent",
+            search: {
+              fromDate: lastAlertCheck,
+              toDate: nowIso,
+              deviceSearch: { id: deviceId }
             }
-          }, handleError);
+          }, function (events) {
+            // Only care about events matching the IOX-ALERT rule name
+            const alertEvents = events.filter(function (ev) {
+              return ev.rule && ev.rule.name === ALERT_RULE_NAME;
+            });
+
+            log(
+              "Found " + alertEvents.length +
+              ' exception events for alert rule "' + ALERT_RULE_NAME + '".'
+            );
+
+            // For every new alert event in this window, send a restore command
+            alertEvents.forEach(function (ev) {
+              if (!ev.device || !ev.device.id) return;
+              if (ev.device.id !== deviceId) return;
+
+              log("Alert rule triggered (button press) for device " + deviceId + ". Sending relay OFF (restore).");
+              restoreVehicle(deviceId, "auto IOX-ALERT restore");
+            });
+
+            lastAlertCheck = nowIso;
+          }, function (error) {
+            handleError(error);
+            lastAlertCheck = nowIso; // move window forward anyway
+          });
+        }
+
+        function pollAutoLogic() {
+          // On each cycle, we:
+          //  - check idle rule to KILL if needed
+          //  - check alert rule to RESTORE if needed
+          pollIdleForSelectedDevice();
+          pollAlertForSelectedDevice();
         }
 
         function startAutoMode() {
@@ -269,7 +324,13 @@
             clearInterval(autoTimerId);
             autoTimerId = null;
           }
-          autoTimerId = setInterval(checkIdleAndMaybePulse, AUTO_POLL_SECONDS * 1000);
+
+          const now = new Date();
+          const fromIso = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+          lastIdleCheck = fromIso;
+          lastAlertCheck = fromIso;
+
+          autoTimerId = setInterval(pollAutoLogic, AUTO_POLL_SECONDS * 1000);
           log(
             "Auto idle shutdown enabled. Polling every " +
             AUTO_POLL_SECONDS + " seconds."
@@ -286,29 +347,31 @@
 
         return {
           initialize: function (apiArg, stateArg, callback) {
-            deviceSelect = document.getElementById("deviceSelect");
-            pulseBtn = document.getElementById("pulseBtn");
-            logEl = document.getElementById("log");
-            outputIndexInput = document.getElementById("outputIndex");
-            pulseSecondsInput = document.getElementById("pulseSeconds");
-            autoEnableInput = document.getElementById("autoEnable");
+            deviceSelect      = document.getElementById("deviceSelect");
+            killBtn           = document.getElementById("killBtn");
+            restoreBtn        = document.getElementById("restoreBtn");
+            logEl             = document.getElementById("log");
+            outputIndexInput  = document.getElementById("outputIndex");
+            autoEnableInput   = document.getElementById("autoEnable");
 
             log("Add-in initialized.");
 
-            pulseBtn.addEventListener("click", function () {
+            killBtn.addEventListener("click", function () {
               const deviceId = deviceSelect.value;
-              let outputIndex = parseInt(outputIndexInput.value || "1", 10);
-              let pulseSeconds = parseInt(
-                pulseSecondsInput.value || String(DEFAULT_PULSE_SECONDS),
-                10
-              );
-              if (isNaN(outputIndex) || outputIndex < 1) outputIndex = 1;
-              if (isNaN(pulseSeconds) || pulseSeconds < 1) {
-                pulseSeconds = DEFAULT_PULSE_SECONDS;
+              if (!deviceId) {
+                log("Select a device first.");
+                return;
               }
-              const pulseMs = pulseSeconds * 1000;
+              killVehicle(deviceId, "manual kill button");
+            });
 
-              pulseRelay(deviceId, outputIndex, pulseMs, "manual");
+            restoreBtn.addEventListener("click", function () {
+              const deviceId = deviceSelect.value;
+              if (!deviceId) {
+                log("Select a device first.");
+                return;
+              }
+              restoreVehicle(deviceId, "manual restore button");
             });
 
             autoEnableInput.addEventListener("change", function () {
@@ -337,4 +400,3 @@
   </script>
 </body>
 </html>
-
