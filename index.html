@@ -1,109 +1,80 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Idle Relay Control (IOX-OUTPUT)</title>
+<div id="idle-relay-root">
   <style>
-    :root {
-      --bg: #f3f4f6;
-      --card-bg: #ffffff;
-      --border: #e5e7eb;
-      --text-main: #111827;
-      --text-muted: #6b7280;
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --danger: #b91c1c;
-      --danger-hover: #991b1b;
-      --success: #16a34a;
-      --success-bg: #dcfce7;
-      --danger-bg: #fee2e2;
-      --warning-bg: #fef3c7;
-      --radius-lg: 12px;
-    }
-
-    body {
+    #idle-relay-root {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      margin: 0;
       padding: 24px;
       background: radial-gradient(circle at top left, #e0f2fe 0, #f9fafb 35%, #e5e7eb 100%);
-      color: var(--text-main);
+      color: #111827;
+      box-sizing: border-box;
     }
-
-    .container {
+    #idle-relay-root * {
+      box-sizing: border-box;
+    }
+    .irc-container {
       max-width: 900px;
       margin: 0 auto;
     }
-
-    h1 {
+    .irc-title {
       font-size: 22px;
       margin: 0 0 6px;
       letter-spacing: 0.02em;
     }
-
-    .subtitle {
+    .irc-subtitle {
       font-size: 13px;
-      color: var(--text-muted);
+      color: #6b7280;
       margin-bottom: 18px;
     }
-
-    .card {
-      background: var(--card-bg);
-      border-radius: var(--radius-lg);
+    .irc-card {
+      background: #ffffff;
+      border-radius: 12px;
       border: 1px solid rgba(148, 163, 184, 0.4);
       box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
       padding: 18px 20px 20px;
     }
-
-    .section-title {
+    .irc-section-title {
       font-size: 13px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.07em;
-      color: var(--text-muted);
+      color: #6b7280;
       margin-bottom: 6px;
     }
-
-    .row {
+    .irc-row {
       display: flex;
       flex-wrap: wrap;
       gap: 12px 20px;
       margin-bottom: 16px;
       align-items: center;
     }
-
-    .row + .row {
-      border-top: 1px dashed var(--border);
+    .irc-row + .irc-row {
+      border-top: 1px dashed #e5e7eb;
       padding-top: 14px;
     }
-
-    label {
+    .irc-label {
       display: block;
       font-size: 12px;
       font-weight: 500;
-      color: var(--text-muted);
+      color: #6b7280;
       margin-bottom: 4px;
     }
-
-    select,
-    input[type="number"] {
+    .irc-select,
+    .irc-input {
       padding: 7px 10px;
       font-size: 14px;
       border-radius: 8px;
-      border: 1px solid var(--border);
+      border: 1px solid #e5e7eb;
       min-width: 220px;
       outline: none;
       background: #f9fafb;
       transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
     }
-
-    select:focus,
-    input[type="number"]:focus {
-      border-color: var(--primary);
+    .irc-select:focus,
+    .irc-input:focus {
+      border-color: #2563eb;
       box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.3);
       background: #ffffff;
     }
-
-    .btn {
+    .irc-btn {
       padding: 7px 14px;
       font-size: 14px;
       font-weight: 500;
@@ -116,60 +87,42 @@
       transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
       white-space: nowrap;
     }
-
-    .btn:active {
+    .irc-btn:active {
       transform: translateY(1px);
       box-shadow: none;
     }
-
-    .btn-primary {
-      background: var(--primary);
+    .irc-btn-primary {
+      background: #2563eb;
       color: #ffffff;
       box-shadow: 0 8px 18px rgba(37, 99, 235, 0.3);
     }
-
-    .btn-primary:hover {
-      background: var(--primary-hover);
+    .irc-btn-primary:hover {
+      background: #1d4ed8;
     }
-
-    .btn-danger {
-      background: var(--danger);
+    .irc-btn-danger {
+      background: #b91c1c;
       color: #ffffff;
       box-shadow: 0 8px 18px rgba(185, 28, 28, 0.3);
     }
-
-    .btn-danger:hover {
-      background: var(--danger-hover);
+    .irc-btn-danger:hover {
+      background: #991b1b;
     }
-
-    .btn-ghost {
-      background: transparent;
-      color: var(--text-muted);
-      border: 1px solid var(--border);
-    }
-
-    .btn-ghost:hover {
-      background: #f9fafb;
-    }
-
-    .checkbox-row {
+    .irc-checkbox-row {
       display: flex;
       align-items: center;
       gap: 8px;
       font-size: 13px;
-      color: var(--text-muted);
+      color: #6b7280;
     }
-
-    .checkbox-row input[type="checkbox"] {
+    .irc-checkbox-row input[type="checkbox"] {
       width: 16px;
       height: 16px;
     }
-
-    #log {
+    #irc-log {
       margin-top: 18px;
       padding: 10px 12px;
       border-radius: 10px;
-      border: 1px solid var(--border);
+      border: 1px solid #e5e7eb;
       max-height: 260px;
       overflow-y: auto;
       font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -178,8 +131,7 @@
       color: #e5e7eb;
       white-space: pre-wrap;
     }
-
-    .badge {
+    .irc-badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -188,123 +140,115 @@
       font-size: 11px;
       font-weight: 500;
     }
-
-    .badge-muted {
+    .irc-badge-muted {
       background: #e5e7eb;
       color: #374151;
     }
-
-    .badge-danger {
-      background: var(--danger-bg);
+    .irc-badge-danger {
+      background: #fee2e2;
       color: #b91c1c;
     }
-
-    .badge-success {
-      background: var(--success-bg);
+    .irc-badge-success {
+      background: #dcfce7;
       color: #166534;
     }
-
-    .badge-warning {
-      background: var(--warning-bg);
+    .irc-badge-warning {
+      background: #fef3c7;
       color: #92400e;
     }
-
-    .status-label {
+    .irc-status-label {
       font-size: 12px;
-      color: var(--text-muted);
+      color: #6b7280;
       margin-right: 6px;
     }
-
-    .hint {
+    .irc-hint {
       font-size: 11px;
-      color: var(--text-muted);
+      color: #6b7280;
       margin-top: 4px;
     }
-
     @media (max-width: 640px) {
-      .row {
+      .irc-row {
         flex-direction: column;
         align-items: flex-start;
       }
-      select,
-      input[type="number"] {
+      .irc-select,
+      .irc-input {
         width: 100%;
       }
     }
   </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Idle Relay Control</h1>
-    <div class="subtitle">
+
+  <div class="irc-container">
+    <h1 class="irc-title">Idle Relay Control</h1>
+    <div class="irc-subtitle">
       IOX-OUTPUT + IOX-ALERT control. Idle rule kills the bus and leaves it latched off until
       the driver presses the alert button or an admin restores power here.
     </div>
 
-    <div class="card">
+    <div class="irc-card">
       <!-- Vehicle + status -->
-      <div class="row">
+      <div class="irc-row">
         <div>
-          <div class="section-title">Vehicle</div>
-          <label for="deviceSelect">Select GO device</label>
-          <select id="deviceSelect">
+          <div class="irc-section-title">Vehicle</div>
+          <label class="irc-label" for="irc-deviceSelect">Select GO device</label>
+          <select id="irc-deviceSelect" class="irc-select">
             <option value="">Loading devices…</option>
           </select>
-          <div class="hint">
+          <div class="irc-hint">
             Only devices with IOX-OUTPUT installed should be used here.
           </div>
         </div>
 
         <div>
-          <div class="section-title">Status</div>
+          <div class="irc-section-title">Status</div>
           <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
-            <span class="status-label">Last command:</span>
-            <span id="statusBadge" class="badge badge-muted">None yet</span>
+            <span class="irc-status-label">Last command:</span>
+            <span id="irc-statusBadge" class="irc-badge irc-badge-muted">None yet</span>
           </div>
-          <div class="hint" id="statusHint">
+          <div class="irc-hint" id="irc-statusHint">
             Status is based on the last command sent from this panel.
           </div>
         </div>
       </div>
 
       <!-- Relay settings + admin controls -->
-      <div class="row">
+      <div class="irc-row">
         <div>
-          <div class="section-title">Relay settings</div>
-          <label for="outputIndex">Output index (channel)</label>
-          <input id="outputIndex" type="number" value="2" min="1" style="width:80px" />
-          <div class="hint">
+          <div class="irc-section-title">Relay settings</div>
+          <label class="irc-label" for="irc-outputIndex">Output index (channel)</label>
+          <input id="irc-outputIndex" type="number" value="2" min="1" class="irc-input" style="width:80px" />
+          <div class="irc-hint">
             This should match the IOX-OUTPUT channel wired to the engine kill relay.
           </div>
         </div>
 
         <div>
-          <div class="section-title">Admin controls</div>
+          <div class="irc-section-title">Admin controls</div>
           <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;">
-            <button id="killBtn" class="btn btn-danger">
+            <button id="irc-killBtn" class="irc-btn irc-btn-danger">
               &#x26D4; Shut engine off now
             </button>
-            <button id="restoreBtn" class="btn btn-primary">
+            <button id="irc-restoreBtn" class="irc-btn irc-btn-primary">
               &#x2714; Restore bus power
             </button>
           </div>
-          <div class="hint">
+          <div class="irc-hint">
             These commands go directly to the relay. Use restore if a bus is stuck off.
           </div>
         </div>
       </div>
 
       <!-- Auto mode -->
-      <div class="row">
+      <div class="irc-row">
         <div>
-          <div class="section-title">Automation</div>
-          <div class="checkbox-row">
-            <input id="autoEnable" type="checkbox" />
-            <label for="autoEnable" style="margin:0;">
+          <div class="irc-section-title">Automation</div>
+          <div class="irc-checkbox-row">
+            <input id="irc-autoEnable" type="checkbox" />
+            <label for="irc-autoEnable" style="margin:0;">
               Enable auto idle shutdown for the selected vehicle
             </label>
           </div>
-          <div class="hint">
+          <div class="irc-hint">
             When enabled, this tab will:
             <br />• Watch the idle rule (<strong>2m50s</strong>) and send <strong>relay ON</strong> (kill)
             <br />• Watch the IOX-ALERT rule and send <strong>relay OFF</strong> (restore)
@@ -312,21 +256,16 @@
         </div>
       </div>
 
-      <div id="log"></div>
+      <div id="irc-log"></div>
     </div>
   </div>
 
   <script>
     (function () {
       // ---- CONFIG ----
-      // Use the exact names of your Geotab rules:
-      //  - IDLE_RULE_NAME     = 2m50s idle shutdown rule
-      //  - ALERT_RULE_NAME    = rule based on "Alert button depressed" (IOX-ALERT)
       const IDLE_RULE_NAME  = "Idle > 2m50s (Auto Shutdown)";
       const ALERT_RULE_NAME = "Idle Kill – Alert Button Pressed";
-
-      // How often to poll for exceptions (in seconds)
-      const AUTO_POLL_SECONDS = 10;
+      const AUTO_POLL_SECONDS = 15;
 
       geotab.addin.idleRelayControl = function (api, state) {
 
@@ -353,23 +292,21 @@
           log("ERROR: " + (error && error.message ? error.message : JSON.stringify(error)));
         }
 
-        // --- Status badge helpers ---
         function setStatus(text, variant) {
           statusBadge.textContent = text || "Unknown";
-          statusBadge.className = "badge " + (variant || "badge-muted");
+          statusBadge.className = "irc-badge " + (variant || "irc-badge-muted");
 
-          if (variant === "badge-danger") {
+          if (variant === "irc-badge-danger") {
             statusHint.textContent = "Last command from this panel was to kill (relay ON).";
-          } else if (variant === "badge-success") {
+          } else if (variant === "irc-badge-success") {
             statusHint.textContent = "Last command from this panel was to restore (relay OFF).";
-          } else if (variant === "badge-warning") {
+          } else if (variant === "irc-badge-warning") {
             statusHint.textContent = "Automation is active; status may change based on rules.";
           } else {
             statusHint.textContent = "Status is based on the last command sent from this panel.";
           }
         }
 
-        // Load devices into dropdown
         function loadDevices(callback) {
           log("Loading devices from MyGeotab…");
           api.call("Get", {
@@ -390,7 +327,6 @@
           }, handleError);
         }
 
-        // Send a TextMessage with IoxOutput content
         function sendIoxOutput(deviceId, channel, isRelayOn, reason) {
           if (!deviceId) {
             log("No device selected.");
@@ -427,27 +363,24 @@
           });
         }
 
-        // Manually kill (relay ON = engine/accessories OFF with your wiring)
         function killVehicle(deviceId, reason) {
           let outputIndex = parseInt(outputIndexInput.value || "1", 10);
           if (isNaN(outputIndex) || outputIndex < 1) outputIndex = 1;
 
           log("Killing vehicle " + deviceId + " via relay ON. Reason: " + (reason || "manual"));
-          setStatus("Kill sent", "badge-danger");
+          setStatus("Kill sent", "irc-badge-danger");
           return sendIoxOutput(deviceId, outputIndex, true, reason || "manual kill");
         }
 
-        // Manually restore (relay OFF = normal operation)
         function restoreVehicle(deviceId, reason) {
           let outputIndex = parseInt(outputIndexInput.value || "1", 10);
           if (isNaN(outputIndex) || outputIndex < 1) outputIndex = 1;
 
           log("Restoring vehicle " + deviceId + " via relay OFF. Reason: " + (reason || "manual"));
-          setStatus("Restore sent", "badge-success");
+          setStatus("Restore sent", "irc-badge-success");
           return sendIoxOutput(deviceId, outputIndex, false, reason || "manual restore");
         }
 
-        // Poll idle exceptions for the selected device and kill when new idle events appear
         function pollIdleForSelectedDevice() {
           const deviceId = deviceSelect.value;
           if (!deviceId) {
@@ -459,7 +392,6 @@
           const nowIso = now.toISOString();
 
           if (!lastIdleCheck) {
-            // On first run, look back 5 minutes
             const from = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
             lastIdleCheck = from;
           }
@@ -477,7 +409,6 @@
               deviceSearch: { id: deviceId }
             }
           }, function (events) {
-            // Only care about events matching the idle rule name
             const idleEvents = events.filter(function (ev) {
               return ev.rule && ev.rule.name === IDLE_RULE_NAME;
             });
@@ -492,18 +423,17 @@
               if (ev.device.id !== deviceId) return;
 
               log("Idle rule triggered for device " + deviceId + ". Sending relay ON (kill).");
-              setStatus("Auto kill (idle)", "badge-danger");
+              setStatus("Auto kill (idle)", "irc-badge-danger");
               killVehicle(deviceId, "auto idle rule");
             });
 
             lastIdleCheck = nowIso;
           }, function (error) {
             handleError(error);
-            lastIdleCheck = nowIso; // move window forward anyway
+            lastIdleCheck = nowIso;
           });
         }
 
-        // Poll IOX-ALERT rule exceptions for the selected device and restore when new events appear
         function pollAlertForSelectedDevice() {
           const deviceId = deviceSelect.value;
           if (!deviceId) {
@@ -515,7 +445,6 @@
           const nowIso = now.toISOString();
 
           if (!lastAlertCheck) {
-            // On first run, look back 5 minutes
             const from = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
             lastAlertCheck = from;
           }
@@ -533,7 +462,6 @@
               deviceSearch: { id: deviceId }
             }
           }, function (events) {
-            // Only care about events matching the IOX-ALERT rule name
             const alertEvents = events.filter(function (ev) {
               return ev.rule && ev.rule.name === ALERT_RULE_NAME;
             });
@@ -548,7 +476,7 @@
               if (ev.device.id !== deviceId) return;
 
               log("Alert rule triggered (button press) for device " + deviceId + ". Sending relay OFF (restore).");
-              setStatus("Auto restore (button)", "badge-success");
+              setStatus("Auto restore (button)", "irc-badge-success");
               restoreVehicle(deviceId, "auto IOX-ALERT restore");
             });
 
@@ -560,7 +488,7 @@
         }
 
         function pollAutoLogic() {
-          setStatus("Automation running", "badge-warning");
+          setStatus("Automation running", "irc-badge-warning");
           pollIdleForSelectedDevice();
           pollAlertForSelectedDevice();
         }
@@ -581,7 +509,7 @@
             "Auto idle shutdown enabled. Polling every " +
             AUTO_POLL_SECONDS + " seconds."
           );
-          setStatus("Automation running", "badge-warning");
+          setStatus("Automation running", "irc-badge-warning");
         }
 
         function stopAutoMode() {
@@ -590,22 +518,22 @@
             autoTimerId = null;
             log("Auto idle shutdown disabled.");
           }
-          setStatus("None yet", "badge-muted");
+          setStatus("None yet", "irc-badge-muted");
         }
 
         return {
           initialize: function (apiArg, stateArg, callback) {
-            deviceSelect      = document.getElementById("deviceSelect");
-            killBtn           = document.getElementById("killBtn");
-            restoreBtn        = document.getElementById("restoreBtn");
-            logEl             = document.getElementById("log");
-            outputIndexInput  = document.getElementById("outputIndex");
-            autoEnableInput   = document.getElementById("autoEnable");
-            statusBadge       = document.getElementById("statusBadge");
-            statusHint        = document.getElementById("statusHint");
+            deviceSelect      = document.getElementById("irc-deviceSelect");
+            killBtn           = document.getElementById("irc-killBtn");
+            restoreBtn        = document.getElementById("irc-restoreBtn");
+            logEl             = document.getElementById("irc-log");
+            outputIndexInput  = document.getElementById("irc-outputIndex");
+            autoEnableInput   = document.getElementById("irc-autoEnable");
+            statusBadge       = document.getElementById("irc-statusBadge");
+            statusHint        = document.getElementById("irc-statusHint");
 
             log("Add-in initialized.");
-            setStatus("None yet", "badge-muted");
+            setStatus("None yet", "irc-badge-muted");
 
             killBtn.addEventListener("click", function () {
               const deviceId = deviceSelect.value;
@@ -638,16 +566,15 @@
             });
           },
 
-          focus: function (apiArg, stateArg) {
+          focus: function () {
             log("Idle Relay Control focused.");
           },
 
-          blur: function (apiArg, stateArg) {
+          blur: function () {
             log("Idle Relay Control blurred.");
           }
         };
       };
     })();
   </script>
-</body>
-</html>
+</div>
