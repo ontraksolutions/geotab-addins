@@ -411,42 +411,51 @@
     }
 
     // ---------- IDLE CHECK (ACTIVE STATE) ----------
-    function checkIdle() {
-      const deviceId = deviceSelect.value;
-      if (!deviceId) return;
-      if (!IDLE_RULE_ID) {
-        log('Idle check skipped: IDLE_RULE_ID not resolved yet.');
-        return;
+const IDLE_TRIGGER_WINDOW_MS = 60 * 1000; // 60 seconds
+
+function checkIdle() {
+  const deviceId = deviceSelect.value;
+  if (!deviceId || !IDLE_RULE_ID) return;
+
+  api.call("Get", {
+    typeName: "ExceptionEvent",
+    search: {
+      deviceSearch: { id: deviceId },
+      ruleSearch: { id: IDLE_RULE_ID }
+    }
+  }, function (events) {
+
+    const now = Date.now();
+
+    // Find a RECENTLY-ACTIVATED idle exception
+    const recentActiveIdle = (events || []).find(ev => {
+      if (!ev || !ev.state || ev.state.id !== "ExceptionEventStateActiveId") {
+        return false;
       }
 
-      api.call("Get", {
-        typeName: "ExceptionEvent",
-        search: {
-          deviceSearch: { id: deviceId },
-          ruleSearch: { id: IDLE_RULE_ID }
-        }
-      }, function (events) {
+      if (!ev.activeFrom) return false;
 
-        // TRUE active idle = state.id === ExceptionEventStateActiveId
-        const hasActiveIdle = (events || []).some(function (ev) {
-          return ev &&
-                 ev.state &&
-                 ev.state.id === "ExceptionEventStateActiveId";
-        });
+      const startedMs = new Date(ev.activeFrom).getTime();
+      return (now - startedMs) <= IDLE_TRIGGER_WINDOW_MS;
+    });
 
-        if (hasActiveIdle && !isKilled) {
-          log("ACTIVE idle exception detected → killing vehicle ONCE");
-          sendRelay(deviceId, true, "Idle rule active");
-          isKilled = true;
-        }
-
-        if (!hasActiveIdle && isKilled) {
-          // Do NOT restore automatically; just log
-          log("Idle no longer active. Awaiting IOX-ALERT or admin restore.");
-        }
-
-      }, handleError);
+    if (recentActiveIdle && !isKilled) {
+      log(
+        "RECENT idle exception detected (started " +
+        recentActiveIdle.activeFrom +
+        ") → killing vehicle"
+      );
+      sendRelay(deviceId, true, "Idle rule (recent)");
+      isKilled = true;
     }
+
+    if (!recentActiveIdle && isKilled) {
+      log("No recent active idle exception. Vehicle remains latched off.");
+    }
+
+  }, handleError);
+}
+
 
     // ---------- ALERT CHECK (NEW EVENTS SINCE LAST CHECK) ----------
     function checkAlert() {
