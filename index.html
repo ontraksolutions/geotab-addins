@@ -322,7 +322,7 @@
   const IDLE_RULE_NAME  = "Idle > 2m50s (Auto Shutdown)";
   const ALERT_RULE_NAME = "Idle Kill – Alert Button Pressed";
 
-  const AUTO_POLL_SECONDS = 15;
+  const AUTO_POLL_SECONDS = 3;
 
   // Alert button is momentary; we look back a short window so we don't miss it
   const ALERT_LOOKBACK_SECONDS = 45;
@@ -446,57 +446,56 @@
 
     // -------- IDLE: trigger ONLY when idle exception is CURRENTLY ON (activeTo == null)
     // and ONLY ONCE per active exception instance
-    function checkIdleActive() {
-      const deviceId = deviceSelect.value;
-      if (!deviceId) {
-        log("Idle check: no device selected; skipping.");
-        return;
-      }
+function checkIdleActive() {
+  const deviceId = deviceSelect.value;
+  if (!deviceId) {
+    log("Idle check: no device selected; skipping.");
+    return;
+  }
 
-      api.call("Get", {
-        typeName: "ExceptionEvent",
-        search: {
-          // IMPORTANT: no from/to window here; we need to see active exceptions even if they started earlier
-          deviceSearch: { id: deviceId }
-        }
-      }, function (events) {
-        const idleEvents = (events || []).filter(function (ev) {
-          const matchesName = ev.rule && ev.rule.name === IDLE_RULE_NAME;
-          return matchesName;
-        });
+  const now = new Date();
+  const from = new Date(now.getTime() - 3 * 60 * 1000); // 3-minute sliding window
 
-        // ACTIVE = activeTo is null
-        const activeIdle = idleEvents.find(function (ev) {
-          return ev && ev.activeTo == null;
-        });
-
-        log(
-          "Idle check: total=" + (events ? events.length : 0) +
-          ", idleMatches=" + idleEvents.length +
-          ", activeIdle=" + (activeIdle ? "YES" : "NO") +
-          ", activeIdleId=" + (activeIdle ? activeIdle.id : "n/a") +
-          ", trackedIdleId=" + (activeIdleExceptionId || "n/a")
-        );
-
-        if (activeIdle) {
-          // Only kill once per active exception instance
-          if (activeIdle.id !== activeIdleExceptionId) {
-            activeIdleExceptionId = activeIdle.id;
-            log("Idle exception is ACTIVE (new instance) → kill bus");
-            killVehicle(deviceId, "auto idle (activeTo=null)");
-          } else {
-            // Already handled this active exception
-            // no action
-          }
-        } else {
-          // If idle is not active anymore, clear tracking (do NOT restore)
-          if (activeIdleExceptionId) {
-            log("Idle exception no longer active → clearing tracked idle exception (no auto-restore).");
-            activeIdleExceptionId = null;
-          }
-        }
-      }, handleError);
+  api.call("Get", {
+    typeName: "ExceptionEvent",
+    search: {
+      fromDate: from.toISOString(),
+      toDate: now.toISOString(),
+      deviceSearch: { id: deviceId }
     }
+  }, function (events) {
+
+    const idleEvents = (events || []).filter(function (ev) {
+      return ev.rule && ev.rule.name === IDLE_RULE_NAME;
+    });
+
+    const activeIdle = idleEvents.find(function (ev) {
+      return ev.activeTo == null;
+    });
+
+    log(
+      "Idle check: window=3m" +
+      ", matches=" + idleEvents.length +
+      ", activeIdle=" + (activeIdle ? "YES" : "NO") +
+      ", activeIdleId=" + (activeIdle ? activeIdle.id : "n/a") +
+      ", trackedIdleId=" + (activeIdleExceptionId || "n/a")
+    );
+
+    if (activeIdle) {
+      if (activeIdle.id !== activeIdleExceptionId) {
+        activeIdleExceptionId = activeIdle.id;
+        log("Idle exception ACTIVE → kill bus");
+        killVehicle(deviceId, "auto idle (exception active)");
+      }
+    } else {
+      if (activeIdleExceptionId) {
+        log("Idle exception ended → clearing latch (no restore).");
+        activeIdleExceptionId = null;
+      }
+    }
+  }, handleError);
+}
+
 
     // -------- ALERT: detect recent button press exceptions (brief), restore once per press
     function checkAlertRecent() {
