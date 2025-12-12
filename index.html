@@ -322,7 +322,15 @@
   // ---- CONFIG ----
   const IDLE_RULE_NAME  = "Idle > 2m50s (Auto Shutdown)";
   const ALERT_RULE_NAME = "Idle Kill – Alert Button Pressed";
+
   const AUTO_POLL_SECONDS = 15;
+
+  // idle must have started recently to count as a real trigger (prevents ghost kills)
+  const IDLE_TRIGGER_WINDOW_MS = 60 * 1000;
+
+  // alert is momentary; look back to catch it + debounce restores
+  const ALERT_LOOKBACK_MS = 60 * 1000;
+  const ALERT_RESTORE_COOLDOWN_MS = 30 * 1000;
 
   // Rule IDs (resolved at runtime)
   let IDLE_RULE_ID = null;
@@ -340,17 +348,21 @@
         statusHint;
 
     let autoTimerId = null;
-    let lastAlertCheck = null;
 
-    // IMPORTANT: latch so we don't spam kill repeatedly
+    // Latch so we don't spam kill repeatedly
     let isKilled = false;
 
+    // alert helpers
+    let lastRestoreAt = 0;
+
     function log(msg) {
+      if (!logEl) return;
       logEl.textContent =
         "[" + new Date().toISOString() + "] " + msg + "\n" + logEl.textContent;
     }
 
     function setStatus(text, cls) {
+      if (!statusBadge) return;
       statusBadge.textContent = text;
       statusBadge.className = "badge " + cls;
     }
@@ -368,8 +380,6 @@
           search: { name: name }
         }, function (rules) {
           if (!rules || !rules.length) return resolve(null);
-
-          // Prefer exact match if multiple
           const exact = rules.find(r => r.name === name);
           resolve((exact || rules[0]).id);
         }, function (err) {
@@ -389,7 +399,7 @@
       let channel = parseInt(outputIndexInput.value || "1", 10);
       if (isNaN(channel) || channel < 1) channel = 1;
 
-      log(`Relay ${isOn ? "ON (KILL)" : "OFF (RESTORE)"} → ${deviceId} (${reason})`);
+      log(`Sending relay ${isOn ? "ON (KILL)" : "OFF (RESTORE)"} → ${deviceId} (${reason})`);
 
       api.call("Add", {
         typeName: "TextMessage",
@@ -403,126 +413,121 @@
           }
         }
       }, function () {
-        setStatus(
-          isOn ? "Killed" : "Restored",
-          isOn ? "badge-danger" : "badge-success"
-        );
+        setStatus(isOn ? "Killed" : "Restored", isOn ? "badge-danger" : "badge-success");
       }, handleError);
     }
 
-    // ---------- IDLE CHECK (ACTIVE STATE) ----------
-const IDLE_TRIGGER_WINDOW_MS = 60 * 1000; // 60 seconds
-
-function checkIdle() {
-  const deviceId = deviceSelect.value;
-  if (!deviceId || !IDLE_RULE_ID) return;
-
-  api.call("Get", {
-    typeName: "ExceptionEvent",
-    search: {
-      deviceSearch: { id: deviceId },
-      ruleSearch: { id: IDLE_RULE_ID }
-    }
-  }, function (events) {
-
-    const now = Date.now();
-
-    // Find a RECENTLY-ACTIVATED idle exception
-    const recentActiveIdle = (events || []).find(ev => {
-      if (!ev || !ev.state || ev.state.id !== "ExceptionEventStateActiveId") {
-        return false;
-      }
-
-      if (!ev.activeFrom) return false;
-
-      const startedMs = new Date(ev.activeFrom).getTime();
-      return (now - startedMs) <= IDLE_TRIGGER_WINDOW_MS;
-    });
-
-    if (recentActiveIdle && !isKilled) {
-      log(
-        "RECENT idle exception detected (started " +
-        recentActiveIdle.activeFrom +
-        ") → killing vehicle"
-      );
-      sendRelay(deviceId, true, "Idle rule (recent)");
-      isKilled = true;
-    }
-
-    if (!recentActiveIdle && isKilled) {
-      log("No recent active idle exception. Vehicle remains latched off.");
-    }
-
-  }, handleError);
-}
-
-
-    // ---------- ALERT CHECK (NEW EVENTS SINCE LAST CHECK) ----------
-    function checkAlert() {
+    // ---------- IDLE CHECK (RECENT ACTIVE EVENT) ----------
+    function checkIdle() {
       const deviceId = deviceSelect.value;
       if (!deviceId) return;
-      if (!ALERT_RULE_ID) {
-        log('Alert check skipped: ALERT_RULE_ID not resolved yet.');
-        return;
-      }
 
-      const now = new Date();
-      if (!lastAlertCheck) {
-        lastAlertCheck = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+      if (!IDLE_RULE_ID) {
+        log("Idle check skipped: IDLE_RULE_ID not resolved yet.");
+        return;
       }
 
       api.call("Get", {
         typeName: "ExceptionEvent",
         search: {
           deviceSearch: { id: deviceId },
+          ruleSearch: { id: IDLE_RULE_ID }
+        }
+      }, function (events) {
+        const nowMs = Date.now();
+
+        const recentActiveIdle = (events || []).find(ev => {
+          if (!ev || !ev.state || ev.state.id !== "ExceptionEventStateActiveId") return false;
+          if (!ev.activeFrom) return false;
+          const startedMs = new Date(ev.activeFrom).getTime();
+          return (nowMs - startedMs) <= IDLE_TRIGGER_WINDOW_MS;
+        });
+
+        if (recentActiveIdle && !isKilled) {
+          log("RECENT idle exception detected (activeFrom=" + recentActiveIdle.activeFrom + ") → kill ONCE");
+          sendRelay(deviceId, true, "Idle rule (recent)");
+          isKilled = true;
+        } else if (recentActiveIdle && isKilled) {
+          log("Idle is active but already latched killed; no action.");
+        }
+      }, handleError);
+    }
+
+    // ---------- ALERT CHECK (LOOKBACK WINDOW + COOLDOWN) ----------
+    function checkAlert() {
+      const deviceId = deviceSelect.value;
+      if (!deviceId) return;
+
+      if (!ALERT_RULE_ID) {
+        log("Alert check skipped: ALERT_RULE_ID not resolved yet.");
+        return;
+      }
+
+      const now = new Date();
+      const from = new Date(now.getTime() - ALERT_LOOKBACK_MS);
+
+      api.call("Get", {
+        typeName: "ExceptionEvent",
+        search: {
+          deviceSearch: { id: deviceId },
           ruleSearch: { id: ALERT_RULE_ID },
-          fromDate: lastAlertCheck,
+          fromDate: from.toISOString(),
           toDate: now.toISOString()
         }
       }, function (events) {
+        const hasEvent = (events || []).length > 0;
+        const nowMs = Date.now();
 
-        if ((events || []).length > 0) {
-          if (isKilled) {
-            log("Alert button pressed → restoring vehicle");
-            sendRelay(deviceId, false, "IOX-ALERT button");
-            isKilled = false; // reset latch
-          } else {
-            log("Alert button pressed, but vehicle is not latched killed (no action).");
-          }
+        if (hasEvent && isKilled && (nowMs - lastRestoreAt > ALERT_RESTORE_COOLDOWN_MS)) {
+          log("Alert event detected in last " + (ALERT_LOOKBACK_MS/1000) + "s → restore");
+          sendRelay(deviceId, false, "IOX-ALERT button (lookback)");
+          isKilled = false;
+          lastRestoreAt = nowMs;
         }
-
-        lastAlertCheck = now.toISOString();
       }, handleError);
     }
 
     function poll() {
+      // This log is how we confirm the timer is truly firing
+      log("Polling tick… (interval=" + AUTO_POLL_SECONDS + "s)");
+
+      if (!deviceSelect.value) {
+        log("Polling: no device selected; skipping checks.");
+        return;
+      }
+
       setStatus("Automation running", "badge-warning");
       checkIdle();
       checkAlert();
     }
 
     function startAuto() {
-      if (autoTimerId) clearInterval(autoTimerId);
+      if (autoTimerId) {
+        clearInterval(autoTimerId);
+        autoTimerId = null;
+      }
 
-      // reset windows/latch per session
-      lastAlertCheck = null;
-      // leave isKilled as-is (so it doesn't spam if already killed)
+      log("Auto mode ENABLED");
+      setStatus("Automation running", "badge-warning");
+
+      // Run immediately so you don't wait 15 seconds wondering if it works
+      poll();
 
       autoTimerId = setInterval(poll, AUTO_POLL_SECONDS * 1000);
-      log("Auto mode enabled. Polling every " + AUTO_POLL_SECONDS + "s");
-      setStatus("Automation running", "badge-warning");
+      log("Timer started. Next tick in " + AUTO_POLL_SECONDS + " seconds.");
     }
 
     function stopAuto() {
-      if (autoTimerId) clearInterval(autoTimerId);
-      autoTimerId = null;
-      log("Auto mode disabled.");
+      if (autoTimerId) {
+        clearInterval(autoTimerId);
+        autoTimerId = null;
+      }
+      log("Auto mode DISABLED");
       setStatus("Idle", "badge-muted");
     }
 
     return {
       initialize: function (apiArg, stateArg, done) {
-        // Wire UI
         deviceSelect     = document.getElementById("deviceSelect");
         killBtn          = document.getElementById("killBtn");
         restoreBtn       = document.getElementById("restoreBtn");
@@ -535,13 +540,13 @@ function checkIdle() {
         log("Add-in initialized.");
         setStatus("Idle", "badge-muted");
 
-        // Resolve rule IDs once
+        // Resolve rule IDs once, then log them clearly
         Promise.all([
           resolveRuleId(IDLE_RULE_NAME),
           resolveRuleId(ALERT_RULE_NAME)
-        ]).then(function ([idleId, alertId]) {
-          IDLE_RULE_ID = idleId;
-          ALERT_RULE_ID = alertId;
+        ]).then(function (ids) {
+          IDLE_RULE_ID = ids[0];
+          ALERT_RULE_ID = ids[1];
           log("Resolved IDLE rule ID: " + (IDLE_RULE_ID || "NOT FOUND"));
           log("Resolved ALERT rule ID: " + (ALERT_RULE_ID || "NOT FOUND"));
         });
@@ -550,13 +555,13 @@ function checkIdle() {
         killBtn.onclick = function () {
           const deviceId = deviceSelect.value;
           sendRelay(deviceId, true, "Manual kill");
-          isKilled = true; // latch
+          isKilled = true;
         };
 
         restoreBtn.onclick = function () {
           const deviceId = deviceSelect.value;
           sendRelay(deviceId, false, "Manual restore");
-          isKilled = false; // reset latch
+          isKilled = false;
         };
 
         // Auto toggle
