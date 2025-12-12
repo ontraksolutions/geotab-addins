@@ -352,6 +352,8 @@
     // Latch so we don't spam kill repeatedly
     let isKilled = false;
     let lastProcessedIdleActiveFromMs = 0; // prevents re-triggering on old exceptions
+    let activeIdleExceptionId = null; // tracks the currently-active idle exception
+
 
     // alert helpers
     let lastRestoreAt = 0;
@@ -422,7 +424,6 @@
 function checkIdle() {
   const deviceId = deviceSelect.value;
   if (!deviceId) return;
-
   if (!IDLE_RULE_ID) {
     log("Idle check skipped: IDLE_RULE_ID not resolved yet.");
     return;
@@ -435,44 +436,36 @@ function checkIdle() {
       ruleSearch: { id: IDLE_RULE_ID }
     }
   }, function (events) {
-    const list = events || [];
-    const active = list.filter(ev => ev && ev.state && ev.state.id === "ExceptionEventStateActiveId");
 
-    // Find the newest activeFrom among ACTIVE events (if present)
-    let newestActiveFromMs = 0;
-    let newestActiveFromIso = null;
-
-    active.forEach(ev => {
-      if (!ev.activeFrom) return;
-      const ms = new Date(ev.activeFrom).getTime();
-      if (ms > newestActiveFromMs) {
-        newestActiveFromMs = ms;
-        newestActiveFromIso = ev.activeFrom;
-      }
-    });
+    // Find the ACTIVE idle exception (activeTo === null)
+    const activeEvent = (events || []).find(ev => ev && ev.activeTo === null);
 
     log(
-      `Idle check: total=${list.length}, active=${active.length}, ` +
-      `newestActiveFrom=${newestActiveFromIso || "n/a"}, ` +
-      `lastProcessed=${lastProcessedIdleActiveFromMs ? new Date(lastProcessedIdleActiveFromMs).toISOString() : "n/a"}, ` +
+      `Idle check: total=${events.length}, ` +
+      `active=${activeEvent ? "YES" : "NO"}, ` +
+      `activeExceptionId=${activeEvent ? activeEvent.id : "n/a"}, ` +
+      `trackedExceptionId=${activeIdleExceptionId || "n/a"}, ` +
       `isKilled=${isKilled}`
     );
 
-    // Trigger only when we see a *new* active idle event (activeFrom increased)
-    if (active.length > 0 && newestActiveFromMs > lastProcessedIdleActiveFromMs && !isKilled) {
-      log("NEW ACTIVE idle exception detected → kill ONCE");
-      sendRelay(deviceId, true, "Idle rule (new active event)");
+    // New idle exception just became active
+    if (activeEvent && activeEvent.id !== activeIdleExceptionId) {
+      log("Idle exception became ACTIVE → kill ONCE");
+      sendRelay(deviceId, true, "Idle rule active");
       isKilled = true;
-      lastProcessedIdleActiveFromMs = newestActiveFromMs;
+      activeIdleExceptionId = activeEvent.id;
       return;
     }
 
-    // If we're killed and idle is no longer active, do nothing (latched until button/admin)
-    if (isKilled && active.length === 0) {
-      log("Idle no longer active (ACTIVE exceptions=0). Still latched off until button/admin restore.");
+    // Idle exception ended — clear tracking, but DO NOT restore
+    if (!activeEvent && activeIdleExceptionId) {
+      log("Idle exception ended. Clearing tracked idle exception.");
+      activeIdleExceptionId = null;
     }
+
   }, handleError);
 }
+
 
 
     // ---------- ALERT CHECK (LOOKBACK WINDOW + COOLDOWN) ----------
@@ -501,12 +494,14 @@ function checkAlert() {
     log(`Alert check: found=${count} in last ${ALERT_LOOKBACK_MS/1000}s, isKilled=${isKilled}`);
 
     const nowMs = Date.now();
-    if (count > 0 && isKilled && (nowMs - lastRestoreAt > ALERT_RESTORE_COOLDOWN_MS)) {
-      log("Alert event detected → restore");
-      sendRelay(deviceId, false, "IOX-ALERT button (lookback)");
-      isKilled = false;
-      lastRestoreAt = nowMs;
-    }
+if (count > 0 && isKilled && (nowMs - lastRestoreAt > ALERT_RESTORE_COOLDOWN_MS)) {
+  log("Alert button pressed → restoring vehicle");
+  sendRelay(deviceId, false, "IOX-ALERT button");
+  isKilled = false;
+  activeIdleExceptionId = null; // 🔑 reset idle tracking
+  lastRestoreAt = nowMs;
+}
+
   }, handleError);
 }
 
